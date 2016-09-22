@@ -18,6 +18,8 @@ func main() {
 	}
 	defer conn.Close()
 
+	showMenu()
+
 	go ServerMessageHanlder(conn)
 
 	for true {
@@ -33,7 +35,7 @@ func ServerMessageHanlder(conn net.Conn){
 			log.Fatal("Conection lost %v",err)
 		}
 		message = Decode(message)
-		fmt.Printf("MESSAGE RECEIVED: \n %v", message)
+		fmt.Printf("MESSAGE RECEIVED: %v", message)
 	}
 }
 
@@ -42,11 +44,47 @@ func InputHandler(conn net.Conn){
 
 	for true {
 		m, _ := reader.ReadString('\n')
-		message := Encode(m)
-		conn.Write([]byte(message))
+		option, args := parseInput(m)
+		if(option==""){
+
+		}else{
+			
+		}
+		fmt.Printf("option: %v, args: %v",option,args)
+		//if(m=="^D\n"){
+		//	showMenu()
+		//}else{
+			message := Encode(m)
+			//message = "L/;" + message
+			conn.Write([]byte(message))
+		//}
+
 
 
 	}
+}
+
+func parseInput(m string)(string, string){
+	splitted := strings.Split(m," ")
+	if(len(splitted)>1){
+		return splitted[0],splitted[1]
+	}
+	return "",""
+}
+
+func showMenu(){
+	fmt.Println("")
+	fmt.Println("--PLEASE SELECT THE DESIRED OPTION:\n")
+	fmt.Println("  1. Create a chatroom.   Args: Name")
+	fmt.Println("  2. List chatrooms.")
+	fmt.Println("  3. Join existing chatroom.   Args: Name")
+	fmt.Println("  4. Send Message    Args: Message")
+	fmt.Println("  5. Quit chatroom.    Args: Name")
+	fmt.Println("  0. Show Menu")
+	fmt.Println("")
+	fmt.Println("  Example:  '3 chatroom2'")
+	fmt.Println("")
+
 }
 
 func Decode(value string) (string) {

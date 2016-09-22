@@ -9,9 +9,9 @@ import (
 	"fmt"
 )
 
-var chatRooms map[string]int
-var clients []*Client
-var chatRoomId int = 1
+var chatRooms map[string]Chatroom
+//var clients []*Client
+//var chatRoomId int = 1
 
 func main() {
 
@@ -22,17 +22,16 @@ func main() {
 
 func ListenAndServe(port string){
 	listener, _ := net.Listen("tcp",":" + port)
-	chatRooms = make(map[string]int)
+	chatRooms = make(map[string]Chatroom)
 
 	for{
 		conn, err := listener.Accept()
 		if err!=nil {
 			log.Fatal("Error starting server %v",err)
 		}
-		client := Client{conn,-1,""}
-		clients = append(clients, &client);
+		client := Client{conn,""}
+//		clients = append(clients, &client);
 
-		fmt.Fprintln(client.Connection, "Welcome, please set your username,chatroom in that format:")
 		channel := make(chan string)
 
 		go handleInMessages(channel, &client)
@@ -56,22 +55,67 @@ func handleInMessages(out chan string, client *Client) {
 		line, err := reader.ReadBytes('\n')
 		log.Printf("Message %v, from %v",string(line),client)
 		if err != nil {
-			removeClient(client)
+			//removeClient(client)
 			return
 		}
-		if client.ChatRoom<=0|| client.UserName==""{
 
-			data := strings.Split(Decode(string(line)),",")
-			if len(data)>0{
-				GenerateNewChatRoom(strings.Replace(data[1],"\n","",-1))
-				client.UserName = data[0]
-				client.ChatRoom = chatRooms[strings.Replace(data[1],"\n","",-1)]
-				fmt.Fprintln(client.Connection,"Dear: " +client.UserName + ", you joined the chatroom: " + strings.Replace(data[1],"\n","",-1))
-				continue
+
+		command, message := parseMessage(Decode(string(line)))
+		log.Printf("command: %v, message: %v",command,message)
+
+		switch command {
+
+		//Create chatroom
+		case "C":
+			created := CreateNewChatRoom(message)
+			if created{
+				fmt.Fprintln(client.Connection,"The chatroom was created")
+			}else{
+				fmt.Fprintln(client.Connection,"The chatroom already exists")
 			}
 
+		//List chatrooms
+		case "L":
+			if len(chatRooms)==0{
+				fmt.Fprintln(client.Connection,"There are no chatrooms created")
+			}else{
+				for k := range chatRooms {
+					fmt.Fprint(client.Connection,"* "+k)
+				}
+			}
+
+
+		//Join existing chatroom
+		case "J":
+			joined := joinChatroom(client,message)
+			if joined{
+				fmt.Fprintln(client.Connection,"You joined the chatroom")
+			}else{
+				fmt.Fprintln(client.Connection,"The chatroom doesn't exists")
+			}
+
+		//Message to chatrooms
+		case "M":
+			out <- string(message)
+
+		//Quit chatroom
+		case "Q":
+			left := leaveChatRoom(client,message)
+			if left{
+				fmt.Fprintln(client.Connection,"You left the chatroom")
+			}else{
+				fmt.Fprintln(client.Connection,"You were not in the chatroom or it doesn't exist")
+			}
+		//Set username
+		case "U":
+			client.UserName=message
+
+		//Send message
+		default:
+			out <- string(message)
+
+
 		}
-		out <- string(line)
 	}
 }
 
@@ -89,43 +133,101 @@ func handleOutMessages(in <-chan string, client *Client) {
 
 func BroadcastMessage(message string, client *Client){
 	log.Printf("Broadcasting Message %v",message)
-	for _, _client := range clients {
-		if (client.ChatRoom == _client.ChatRoom) {
-			fmt.Fprintln(_client.Connection, message)
+	//Go through all the chatrooms
+	for k := range chatRooms {
+		//Go through the clients
+		for i:= range chatRooms[k].clients{
+			//Is the client in this chatroom?
+			if (chatRooms[k].clients[i] == *client) {
+				addMessageToChatroom(k,message)
+				//Go through all the clients in this chatroom
+				for j:= range chatRooms[k].clients{
+					//Avoid sending back the message to the same user
+					if (chatRooms[k].clients[j] != *client) {
+						fmt.Fprintln(chatRooms[k].clients[j].Connection, message)
+					}
+				}
+
+			}
+		}
+
+
+	}
+}
+
+func CreateNewChatRoom(name string) bool{
+
+	if _, ok := chatRooms[name]; ok {
+		return false
+	}
+	log.Printf("CHs %v",chatRooms)
+	var clients []Client
+	var messages []string
+	chatRoom := Chatroom{name,clients,messages}
+
+	chatRooms[name] = chatRoom
+	return true
+
+}
+func joinChatroom(client *Client, name string)  bool{
+
+	for k := range chatRooms {
+		if(k==name){
+			chatRoom := chatRooms[k]
+			chatRoom.clients = append(chatRoom.clients, *client)
+			chatRooms[k] = chatRoom
+			return true
 		}
 	}
+	return false
 }
 
-func GenerateNewChatRoom(name string){
-	if chatRooms[name] <= 0 {
-		chatRooms[name] = chatRoomId + 1
-	}
+func leaveChatRoom(client *Client, name string)  bool{
 
-}
-
-func removeClient(client *Client){
-	var clientsTemp []*Client
-	var index = -1
-	client.Connection.Close()
-	for i, cl := range clients{
-		if(cl == client){
-			index = i
-			break
+	//Go through all the chatRooms
+	for k := range chatRooms {
+		//Find the specified chatroom
+		if(k==name){
+			//Go througn all the clients for the chatroom
+			for i:= range chatRooms[k].clients{
+				//Is the user in this chatroom?
+				if (chatRooms[k].clients[i] == *client) {
+					chatRoom := chatRooms[k]
+					clients := chatRoom.clients
+					clients = append(clients[:i],clients[i+1:]...)
+					chatRoom.clients = clients
+					chatRooms[k] = chatRoom
+					return true
+				}
+			}
 		}
 	}
+	return false
+}
 
-	if (index>=0){
-		clientsTemp := make([]*Client, len(clients)-1)
-		copy(clientsTemp,clients[:index])
-		copy(clientsTemp[index:],clients[index+1:])
+func addMessageToChatroom(name, message string){
+	chatRoom := chatRooms[name]
+	chatRoom.meesages = append(chatRoom.meesages,message)
+}
+
+func parseMessage(data string) (string, string){
+	result := strings.SplitN(data, "/;",2)
+	if len(result)<2{
+		return "",result[0]
 	}
-	clients = clientsTemp
+	return result[0],result[1]
 
 }
+
 type Client struct {
 	Connection net.Conn
-	ChatRoom int
 	UserName string
+}
+
+type Chatroom struct{
+	name string
+	clients []Client
+	meesages []string
 }
 
 func Decode(value string) (string) {

@@ -96,7 +96,7 @@ func handleInMessages(out chan string, client *Client) {
 
 		//Message to chatrooms
 		case "M":
-			out <- string(message)
+			out <- string(client.UserName+": "+message)
 
 		//Quit chatroom
 		case "Q":
@@ -109,10 +109,12 @@ func handleInMessages(out chan string, client *Client) {
 		//Set username
 		case "U":
 			client.UserName=message
+			client.UserName = strings.Replace(client.UserName,"\n","",-1)
+			//fmt.Fprintf(client.Connection,"Welcome " + client.UserName + "!!" )
 
 		//Send message
 		default:
-			out <- string(message)
+			out <- string(client.UserName+": "+message)
 
 
 		}
